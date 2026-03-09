@@ -46,7 +46,7 @@ pub async fn create_hypertable(
     let time_col = validate_ident(&config.time_column)?;
 
     let mut sql = String::from("SELECT create_hypertable(");
-    sql.push_str(&format!("'\"{table}\"', '\"{time_col}\"'"));
+    sql.push_str(&format!("'{table}', '{time_col}'"));
 
     if let Some(ref interval) = config.chunk_interval {
         sql.push_str(&format!(", chunk_time_interval => INTERVAL '{interval}'"));
@@ -118,7 +118,7 @@ pub async fn enable_compression(
 
     // Add compression policy
     let policy_sql = format!(
-        "SELECT add_compression_policy('\"{table}\"', INTERVAL '{}')",
+        "SELECT add_compression_policy('{table}', INTERVAL '{}')",
         config.compress_after
     );
     db.execute_unprepared(&policy_sql).await?;
@@ -146,7 +146,7 @@ pub async fn add_retention_policy(
     let table = validate_ident(table)?;
 
     let sql = format!(
-        "SELECT add_retention_policy('\"{table}\"', INTERVAL '{}')",
+        "SELECT add_retention_policy('{table}', INTERVAL '{}')",
         config.drop_after
     );
     db.execute_unprepared(&sql).await?;
@@ -194,7 +194,7 @@ pub async fn create_continuous_aggregate(
 
     if let Some(ref policy) = config.refresh_policy {
         let policy_sql = format!(
-            "SELECT add_continuous_aggregate_policy('\"{view}\"', \
+            "SELECT add_continuous_aggregate_policy('{view}', \
              start_offset => INTERVAL '{}', \
              end_offset => INTERVAL '{}', \
              schedule_interval => INTERVAL '{}')",
@@ -230,7 +230,7 @@ pub async fn refresh_continuous_aggregate(
     let end = escape_string_literal(end);
 
     let sql = format!(
-        "CALL refresh_continuous_aggregate('\"{view}\"', '{start}', '{end}')"
+        "CALL refresh_continuous_aggregate('{view}', '{start}', '{end}')"
     );
     db.execute_unprepared(&sql).await?;
     Ok(())
@@ -275,14 +275,14 @@ mod tests {
         let time_col = validate_ident("time").unwrap();
 
         let mut sql = String::from("SELECT create_hypertable(");
-        sql.push_str(&format!("'\"{table}\"', '\"{time_col}\"'"));
+        sql.push_str(&format!("'{table}', '{time_col}'"));
         sql.push_str(", chunk_time_interval => INTERVAL '7 days'");
         sql.push_str(", if_not_exists => TRUE");
         sql.push(')');
 
         assert_eq!(
             sql,
-            "SELECT create_hypertable('\"readings\"', '\"time\"', chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE)"
+            "SELECT create_hypertable('readings', 'time', chunk_time_interval => INTERVAL '7 days', if_not_exists => TRUE)"
         );
     }
 
@@ -334,13 +334,13 @@ mod tests {
         };
 
         let sql = format!(
-            "SELECT add_retention_policy('\"{table}\"', INTERVAL '{}')",
+            "SELECT add_retention_policy('{table}', INTERVAL '{}')",
             config.drop_after
         );
 
         assert_eq!(
             sql,
-            "SELECT add_retention_policy('\"readings\"', INTERVAL '365 days')"
+            "SELECT add_retention_policy('readings', INTERVAL '365 days')"
         );
     }
 
@@ -367,7 +367,7 @@ mod tests {
         };
 
         let policy_sql = format!(
-            "SELECT add_continuous_aggregate_policy('\"{view}\"', \
+            "SELECT add_continuous_aggregate_policy('{view}', \
              start_offset => INTERVAL '{}', \
              end_offset => INTERVAL '{}', \
              schedule_interval => INTERVAL '{}')",
@@ -376,7 +376,7 @@ mod tests {
 
         assert_eq!(
             policy_sql,
-            "SELECT add_continuous_aggregate_policy('\"readings_hourly\"', start_offset => INTERVAL '3 days', end_offset => INTERVAL '1 hours', schedule_interval => INTERVAL '1 hours')"
+            "SELECT add_continuous_aggregate_policy('readings_hourly', start_offset => INTERVAL '3 days', end_offset => INTERVAL '1 hours', schedule_interval => INTERVAL '1 hours')"
         );
     }
 
@@ -387,12 +387,12 @@ mod tests {
         let end = escape_string_literal("2024-02-01");
 
         let sql = format!(
-            "CALL refresh_continuous_aggregate('\"{view}\"', '{start}', '{end}')"
+            "CALL refresh_continuous_aggregate('{view}', '{start}', '{end}')"
         );
 
         assert_eq!(
             sql,
-            "CALL refresh_continuous_aggregate('\"readings_hourly\"', '2024-01-01', '2024-02-01')"
+            "CALL refresh_continuous_aggregate('readings_hourly', '2024-01-01', '2024-02-01')"
         );
     }
 

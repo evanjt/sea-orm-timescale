@@ -229,9 +229,7 @@ pub async fn refresh_continuous_aggregate(
     let start = escape_string_literal(start);
     let end = escape_string_literal(end);
 
-    let sql = format!(
-        "CALL refresh_continuous_aggregate('{view}', '{start}', '{end}')"
-    );
+    let sql = format!("CALL refresh_continuous_aggregate('{view}', '{start}', '{end}')");
     db.execute_unprepared(&sql).await?;
     Ok(())
 }
@@ -386,9 +384,7 @@ mod tests {
         let start = escape_string_literal("2024-01-01");
         let end = escape_string_literal("2024-02-01");
 
-        let sql = format!(
-            "CALL refresh_continuous_aggregate('{view}', '{start}', '{end}')"
-        );
+        let sql = format!("CALL refresh_continuous_aggregate('{view}', '{start}', '{end}')");
 
         assert_eq!(
             sql,

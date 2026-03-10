@@ -14,9 +14,7 @@ use crate::types::Interval;
 pub fn time_bucket(interval: &Interval, column: impl IntoIden + Clone) -> SimpleExpr {
     let iden = column.into_iden();
     let col_name = iden.to_string();
-    SimpleExpr::Custom(format!(
-        "time_bucket('{interval}', \"{col_name}\")"
-    ))
+    SimpleExpr::Custom(format!("time_bucket('{interval}', \"{col_name}\")"))
 }
 
 /// Generates a `time_bucket_gapfill(interval, column)` expression.
@@ -25,9 +23,7 @@ pub fn time_bucket(interval: &Interval, column: impl IntoIden + Clone) -> Simple
 pub fn time_bucket_gapfill(interval: &Interval, column: impl IntoIden + Clone) -> SimpleExpr {
     let iden = column.into_iden();
     let col_name = iden.to_string();
-    SimpleExpr::Custom(format!(
-        "time_bucket_gapfill('{interval}', \"{col_name}\")"
-    ))
+    SimpleExpr::Custom(format!("time_bucket_gapfill('{interval}', \"{col_name}\")"))
 }
 
 /// Generates a `first(value_column, time_column)` aggregate expression.
@@ -36,9 +32,7 @@ pub fn time_bucket_gapfill(interval: &Interval, column: impl IntoIden + Clone) -
 pub fn first(value_col: impl IntoIden + Clone, time_col: impl IntoIden + Clone) -> SimpleExpr {
     let value_name = value_col.into_iden().to_string();
     let time_name = time_col.into_iden().to_string();
-    SimpleExpr::Custom(format!(
-        "first(\"{value_name}\", \"{time_name}\")"
-    ))
+    SimpleExpr::Custom(format!("first(\"{value_name}\", \"{time_name}\")"))
 }
 
 /// Generates a `last(value_column, time_column)` aggregate expression.
@@ -47,9 +41,7 @@ pub fn first(value_col: impl IntoIden + Clone, time_col: impl IntoIden + Clone) 
 pub fn last(value_col: impl IntoIden + Clone, time_col: impl IntoIden + Clone) -> SimpleExpr {
     let value_name = value_col.into_iden().to_string();
     let time_name = time_col.into_iden().to_string();
-    SimpleExpr::Custom(format!(
-        "last(\"{value_name}\", \"{time_name}\")"
-    ))
+    SimpleExpr::Custom(format!("last(\"{value_name}\", \"{time_name}\")"))
 }
 
 /// Wraps a `SimpleExpr` with `locf()` (Last Observation Carried Forward).
@@ -71,13 +63,9 @@ pub fn locf(inner: SimpleExpr) -> SimpleExpr {
         SimpleExpr::Custom(sql) => SimpleExpr::Custom(format!("locf({sql})")),
         other => {
             // For non-Custom exprs, render via sea-query and wrap
-            let rendered = Query::select()
-                .expr(other)
-                .to_string(PostgresQueryBuilder);
+            let rendered = Query::select().expr(other).to_string(PostgresQueryBuilder);
             // Extract just the expression from "SELECT <expr>"
-            let expr_str = rendered
-                .strip_prefix("SELECT ")
-                .unwrap_or(&rendered);
+            let expr_str = rendered.strip_prefix("SELECT ").unwrap_or(&rendered);
             SimpleExpr::Custom(format!("locf({expr_str})"))
         }
     }
@@ -143,10 +131,7 @@ mod tests {
     #[test]
     fn test_histogram_sql() {
         let expr = histogram(Alias::new("temperature"), 0.0, 100.0, 10);
-        assert_eq!(
-            custom_sql(&expr),
-            "histogram(\"temperature\", 0, 100, 10)"
-        );
+        assert_eq!(custom_sql(&expr), "histogram(\"temperature\", 0, 100, 10)");
     }
 
     #[test]

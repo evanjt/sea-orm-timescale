@@ -28,10 +28,7 @@ fn test_time_bucket_minutes() {
 #[test]
 fn test_time_bucket_days() {
     let expr = time_bucket(&Interval::Days(7), Alias::new("created_at"));
-    assert_eq!(
-        custom_sql(&expr),
-        "time_bucket('7 days', \"created_at\")"
-    );
+    assert_eq!(custom_sql(&expr), "time_bucket('7 days', \"created_at\")");
 }
 
 #[test]
@@ -65,10 +62,7 @@ fn test_locf_with_custom_expr() {
 #[test]
 fn test_histogram_expression() {
     let expr = histogram(Alias::new("temperature"), -10.0, 50.0, 20);
-    assert_eq!(
-        custom_sql(&expr),
-        "histogram(\"temperature\", -10, 50, 20)"
-    );
+    assert_eq!(custom_sql(&expr), "histogram(\"temperature\", -10, 50, 20)");
 }
 
 // --- Interval parsing tests ---

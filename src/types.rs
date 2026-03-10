@@ -1,15 +1,37 @@
 use std::fmt;
 
-/// Represents a PostgreSQL/TimescaleDB interval for use in time_bucket, retention policies, etc.
+/// A PostgreSQL interval for use in `time_bucket`, retention policies, compression, etc.
+///
+/// Renders to SQL interval literals like `'7 days'` or `'1 hours'`.
+/// Can also be parsed from strings via [`Interval::parse`].
+///
+/// # Example
+/// ```
+/// use sea_orm_timescale::types::Interval;
+///
+/// let weekly = Interval::Days(7);
+/// assert_eq!(weekly.to_string(), "7 days");
+///
+/// let parsed = Interval::parse("1h").unwrap();
+/// assert_eq!(parsed, Interval::Hours(1));
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Interval {
+    /// Microseconds (e.g. `500 microseconds`).
     Microseconds(i64),
+    /// Milliseconds (e.g. `100 milliseconds`).
     Milliseconds(i64),
+    /// Seconds (e.g. `30 seconds`). Short form: `"30s"`.
     Seconds(i64),
+    /// Minutes (e.g. `5 minutes`). Short form: `"5m"`.
     Minutes(i64),
+    /// Hours (e.g. `1 hours`). Short form: `"1h"`.
     Hours(i64),
+    /// Days (e.g. `7 days`). Short form: `"7d"`.
     Days(i64),
+    /// Weeks (e.g. `1 weeks`). Short form: `"1w"`.
     Weeks(i64),
+    /// Months (e.g. `3 months`). Short form: `"3M"` (uppercase M).
     Months(i64),
 }
 
@@ -105,10 +127,14 @@ impl Interval {
     }
 }
 
+/// Error returned by [`Interval::parse`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IntervalParseError {
+    /// Input couldn't be split into a number and unit (e.g. empty string).
     InvalidFormat(String),
+    /// The numeric portion couldn't be parsed as an integer.
     InvalidNumber(String),
+    /// The unit portion wasn't recognised (e.g. `"lightyear"`).
     UnknownUnit(String),
 }
 
@@ -140,41 +166,58 @@ impl fmt::Display for SortDirection {
     }
 }
 
-/// Configuration for creating a hypertable.
+/// Configuration for [`create_hypertable`](crate::migration::create_hypertable).
 #[derive(Debug, Clone)]
 pub struct HypertableConfig {
+    /// The existing table to convert (e.g. `"readings"`).
     pub table_name: String,
+    /// The `TIMESTAMPTZ` column used as the time dimension.
     pub time_column: String,
+    /// Chunk size for partitioning. Defaults to 7 days if `None`.
     pub chunk_interval: Option<Interval>,
+    /// When `true`, silently succeeds if the hypertable already exists.
     pub if_not_exists: bool,
 }
 
-/// Configuration for enabling compression on a hypertable.
+/// Configuration for [`enable_compression`](crate::migration::enable_compression).
 #[derive(Debug, Clone)]
 pub struct CompressionConfig {
+    /// Columns to segment compressed data by (e.g. `["site_id"]`).
     pub segment_by: Vec<String>,
+    /// Columns to order compressed data by within each segment.
     pub order_by: Vec<(String, SortDirection)>,
+    /// Automatically compress chunks older than this interval.
     pub compress_after: Interval,
 }
 
-/// Configuration for a continuous aggregate view.
+/// Configuration for [`create_continuous_aggregate`](crate::migration::create_continuous_aggregate).
 #[derive(Debug, Clone)]
 pub struct ContinuousAggregateConfig {
+    /// Name for the materialized view (e.g. `"readings_hourly"`).
     pub view_name: String,
+    /// The bucket interval used in the aggregate's `time_bucket` call.
     pub bucket_interval: Interval,
+    /// Optional automatic refresh policy. If `None`, the aggregate must be refreshed manually.
     pub refresh_policy: Option<RefreshPolicy>,
 }
 
-/// Refresh policy for continuous aggregates.
+/// Automatic refresh policy for a continuous aggregate.
+///
+/// TimescaleDB will run a background job on `schedule_interval` to refresh
+/// data between `start_offset` and `end_offset` relative to now.
 #[derive(Debug, Clone)]
 pub struct RefreshPolicy {
+    /// How far back from now to start refreshing (e.g. `Interval::Days(3)`).
     pub start_offset: Interval,
+    /// How close to now to stop refreshing (e.g. `Interval::Hours(1)`).
     pub end_offset: Interval,
+    /// How often to run the refresh job.
     pub schedule_interval: Interval,
 }
 
-/// Configuration for data retention policies.
+/// Configuration for [`add_retention_policy`](crate::migration::add_retention_policy).
 #[derive(Debug, Clone)]
 pub struct RetentionConfig {
+    /// Automatically drop chunks older than this interval.
     pub drop_after: Interval,
 }

@@ -234,6 +234,86 @@ pub async fn refresh_continuous_aggregate(
     Ok(())
 }
 
+/// Removes a data retention policy from a hypertable.
+///
+/// The table name is validated for safety (alphanumeric + underscore only).
+///
+/// # Example
+/// ```ignore
+/// use sea_orm_timescale::migration::remove_retention_policy;
+///
+/// remove_retention_policy(&db, "readings").await?;
+/// ```
+pub async fn remove_retention_policy(db: &impl ConnectionTrait, table: &str) -> Result<(), DbErr> {
+    let table = validate_ident(table)?;
+    let sql = format!("SELECT remove_retention_policy('{table}')");
+    db.execute_unprepared(&sql).await?;
+    Ok(())
+}
+
+/// Removes a compression policy from a hypertable.
+///
+/// This only removes the automatic compression policy — already-compressed chunks
+/// remain compressed. The table name is validated for safety.
+///
+/// # Example
+/// ```ignore
+/// use sea_orm_timescale::migration::remove_compression_policy;
+///
+/// remove_compression_policy(&db, "readings").await?;
+/// ```
+pub async fn remove_compression_policy(
+    db: &impl ConnectionTrait,
+    table: &str,
+) -> Result<(), DbErr> {
+    let table = validate_ident(table)?;
+    let sql = format!("SELECT remove_compression_policy('{table}')");
+    db.execute_unprepared(&sql).await?;
+    Ok(())
+}
+
+/// Removes a refresh policy from a continuous aggregate.
+///
+/// The view name is validated for safety (alphanumeric + underscore only).
+///
+/// # Example
+/// ```ignore
+/// use sea_orm_timescale::migration::remove_continuous_aggregate_policy;
+///
+/// remove_continuous_aggregate_policy(&db, "readings_hourly").await?;
+/// ```
+pub async fn remove_continuous_aggregate_policy(
+    db: &impl ConnectionTrait,
+    view: &str,
+) -> Result<(), DbErr> {
+    let view = validate_ident(view)?;
+    let sql = format!("SELECT remove_continuous_aggregate_policy('{view}')");
+    db.execute_unprepared(&sql).await?;
+    Ok(())
+}
+
+/// Drops chunks older than a given interval from a hypertable.
+///
+/// Both the table name and interval are validated. This permanently deletes data
+/// in the affected chunks.
+///
+/// # Example
+/// ```ignore
+/// use sea_orm_timescale::{migration::drop_chunks, types::Interval};
+///
+/// drop_chunks(&db, "readings", &Interval::Days(30)).await?;
+/// ```
+pub async fn drop_chunks(
+    db: &impl ConnectionTrait,
+    table: &str,
+    older_than: &crate::types::Interval,
+) -> Result<(), DbErr> {
+    let table = validate_ident(table)?;
+    let sql = format!("SELECT drop_chunks('{table}', older_than => INTERVAL '{older_than}')");
+    db.execute_unprepared(&sql).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,6 +476,41 @@ mod tests {
     fn test_refresh_escapes_single_quotes() {
         let start = escape_string_literal("2024-01-01'--");
         assert_eq!(start, "2024-01-01''--");
+    }
+
+    #[test]
+    fn test_remove_retention_policy_sql() {
+        let table = validate_ident("readings").unwrap();
+        let sql = format!("SELECT remove_retention_policy('{table}')");
+        assert_eq!(sql, "SELECT remove_retention_policy('readings')");
+    }
+
+    #[test]
+    fn test_remove_compression_policy_sql() {
+        let table = validate_ident("readings").unwrap();
+        let sql = format!("SELECT remove_compression_policy('{table}')");
+        assert_eq!(sql, "SELECT remove_compression_policy('readings')");
+    }
+
+    #[test]
+    fn test_remove_continuous_aggregate_policy_sql() {
+        let view = validate_ident("readings_hourly").unwrap();
+        let sql = format!("SELECT remove_continuous_aggregate_policy('{view}')");
+        assert_eq!(
+            sql,
+            "SELECT remove_continuous_aggregate_policy('readings_hourly')"
+        );
+    }
+
+    #[test]
+    fn test_drop_chunks_sql() {
+        let table = validate_ident("readings").unwrap();
+        let interval = Interval::Days(30);
+        let sql = format!("SELECT drop_chunks('{table}', older_than => INTERVAL '{interval}')");
+        assert_eq!(
+            sql,
+            "SELECT drop_chunks('readings', older_than => INTERVAL '30 days')"
+        );
     }
 
     #[test]

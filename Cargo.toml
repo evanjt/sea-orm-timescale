@@ -1,6 +1,6 @@
 [package]
 name = "sea-orm-timescale"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "TimescaleDB extension for Sea-ORM: time_bucket, hypertables, compression, continuous aggregates"
 license = "MIT"

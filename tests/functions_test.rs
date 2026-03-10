@@ -113,6 +113,48 @@ fn test_interval_parse_errors() {
 }
 
 #[test]
+fn test_interpolate_expression() {
+    let inner = SimpleExpr::Custom("AVG(\"value\")".to_string());
+    let expr = interpolate(inner);
+    assert_eq!(custom_sql(&expr), "interpolate(AVG(\"value\"))");
+}
+
+#[test]
+fn test_time_bucket_with_origin_expression() {
+    let expr = time_bucket_with_origin(
+        &Interval::Hours(1),
+        Alias::new("time"),
+        "2024-01-01 00:00:00+00",
+    );
+    assert_eq!(
+        custom_sql(&expr),
+        "time_bucket('1 hours', \"time\", origin => '2024-01-01 00:00:00+00')"
+    );
+}
+
+#[test]
+fn test_time_bucket_with_offset_expression() {
+    let expr = time_bucket_with_offset(
+        &Interval::Hours(1),
+        Alias::new("time"),
+        &Interval::Minutes(30),
+    );
+    assert_eq!(
+        custom_sql(&expr),
+        "time_bucket('1 hours', \"time\", INTERVAL '30 minutes')"
+    );
+}
+
+#[test]
+fn test_time_bucket_tz_expression() {
+    let expr = time_bucket_tz(&Interval::Days(1), Alias::new("time"), "US/Eastern");
+    assert_eq!(
+        custom_sql(&expr),
+        "time_bucket('1 days', \"time\", timezone => 'US/Eastern')"
+    );
+}
+
+#[test]
 fn test_interval_to_sql() {
     let interval = Interval::Hours(6);
     assert_eq!(interval.to_sql_interval(), "6 hours");

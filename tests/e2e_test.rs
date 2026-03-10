@@ -274,6 +274,290 @@ async fn test_continuous_aggregate() {
 
 #[tokio::test]
 #[ignore]
+async fn test_interpolate_query() {
+    let db = connect_db().await;
+    let table = unique_name("ts");
+    create_test_table(&db, &table).await;
+
+    create_hypertable(
+        &db,
+        &HypertableConfig {
+            table_name: table.clone(),
+            time_column: "time".into(),
+            chunk_interval: Some(Interval::Days(7)),
+            if_not_exists: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Insert data with a gap at hour 1
+    let sql = format!(
+        r#"INSERT INTO "{table}" (time, sensor_id, value) VALUES
+            ('2024-01-01 00:00:00+00', 'a', 10.0),
+            ('2024-01-01 02:00:00+00', 'a', 30.0)"#
+    );
+    db.execute_unprepared(&sql).await.unwrap();
+
+    let bucket = time_bucket_gapfill(&Interval::Hours(1), Alias::new("time"));
+    let avg_expr = SimpleExpr::Custom("AVG(value)".to_string());
+    let interp = interpolate(avg_expr);
+    let sql = format!(
+        r#"SELECT {bucket} AS bucket, {interp} AS interp_val
+           FROM "{table}"
+           WHERE time >= '2024-01-01 00:00:00+00' AND time < '2024-01-01 03:00:00+00'
+           GROUP BY bucket ORDER BY bucket"#,
+        bucket = expr_sql(&bucket),
+        interp = expr_sql(&interp)
+    );
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, sql))
+        .await
+        .expect("interpolate query failed");
+
+    // 3 buckets: 00:00, 01:00, 02:00
+    assert_eq!(rows.len(), 3, "Expected 3 hourly buckets with gapfill");
+
+    // The middle bucket (hour 1) should be interpolated to 20.0
+    let val: Option<f64> = rows[1].try_get("", "interp_val").unwrap();
+    assert_eq!(val, Some(20.0), "interpolate should linearly fill the gap");
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_time_bucket_with_origin_query() {
+    let db = connect_db().await;
+    let table = setup_hypertable_with_data(&db).await;
+
+    let bucket = time_bucket_with_origin(
+        &Interval::Hours(1),
+        Alias::new("time"),
+        "2024-01-01 00:30:00+00",
+    );
+    let sql = format!(
+        r#"SELECT {bucket} AS bucket, COUNT(*) AS cnt
+           FROM "{table}" GROUP BY bucket ORDER BY bucket"#,
+        bucket = expr_sql(&bucket)
+    );
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, sql))
+        .await
+        .expect("time_bucket_with_origin query failed");
+
+    // With origin at 00:30, buckets are [00:30-01:30), [01:30-02:30), etc.
+    // Data: 00:10 (before origin bucket), 00:40 (in [00:30,01:30)), 01:10 (in [00:30,01:30))
+    // 01:40 (in [01:30,02:30)), 02:10 (in [01:30,02:30))
+    assert!(
+        !rows.is_empty(),
+        "Should return buckets with shifted alignment"
+    );
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_time_bucket_with_offset_query() {
+    let db = connect_db().await;
+    let table = setup_hypertable_with_data(&db).await;
+
+    let bucket = time_bucket_with_offset(
+        &Interval::Hours(1),
+        Alias::new("time"),
+        &Interval::Minutes(30),
+    );
+    let sql = format!(
+        r#"SELECT {bucket} AS bucket, COUNT(*) AS cnt
+           FROM "{table}" GROUP BY bucket ORDER BY bucket"#,
+        bucket = expr_sql(&bucket)
+    );
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, sql))
+        .await
+        .expect("time_bucket_with_offset query failed");
+
+    assert!(
+        !rows.is_empty(),
+        "Should return buckets with offset boundaries"
+    );
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_time_bucket_tz_query() {
+    let db = connect_db().await;
+    let table = setup_hypertable_with_data(&db).await;
+
+    let bucket = time_bucket_tz(&Interval::Days(1), Alias::new("time"), "UTC");
+    let sql = format!(
+        r#"SELECT {bucket} AS bucket, COUNT(*) AS cnt
+           FROM "{table}" GROUP BY bucket ORDER BY bucket"#,
+        bucket = expr_sql(&bucket)
+    );
+    let rows = db
+        .query_all(Statement::from_string(DbBackend::Postgres, sql))
+        .await
+        .expect("time_bucket_tz query failed");
+
+    // All data is on 2024-01-01 UTC, so expect 1 daily bucket
+    assert_eq!(rows.len(), 1, "Expected 1 daily bucket in UTC");
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_remove_retention_policy() {
+    let db = connect_db().await;
+    let table = setup_hypertable_with_data(&db).await;
+
+    add_retention_policy(
+        &db,
+        &table,
+        &RetentionConfig {
+            drop_after: Interval::Days(365),
+        },
+    )
+    .await
+    .expect("add_retention_policy should succeed");
+
+    remove_retention_policy(&db, &table)
+        .await
+        .expect("remove_retention_policy should succeed");
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_remove_compression_policy() {
+    let db = connect_db().await;
+    let table = setup_hypertable_with_data(&db).await;
+
+    enable_compression(
+        &db,
+        &table,
+        &CompressionConfig {
+            segment_by: vec!["sensor_id".into()],
+            order_by: vec![("time".into(), SortDirection::Desc)],
+            compress_after: Interval::Days(30),
+        },
+    )
+    .await
+    .expect("enable_compression should succeed");
+
+    remove_compression_policy(&db, &table)
+        .await
+        .expect("remove_compression_policy should succeed");
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_remove_continuous_aggregate_policy() {
+    let db = connect_db().await;
+    let table = setup_hypertable_with_data(&db).await;
+    let view = unique_name("cagg");
+
+    let select_sql = format!(
+        r#"SELECT time_bucket('1 hour', time) AS bucket,
+                  sensor_id,
+                  AVG(value) AS avg_value
+           FROM "{table}"
+           GROUP BY bucket, sensor_id"#
+    );
+
+    create_continuous_aggregate(
+        &db,
+        &select_sql,
+        &ContinuousAggregateConfig {
+            view_name: view.clone(),
+            bucket_interval: Interval::Hours(1),
+            refresh_policy: Some(RefreshPolicy {
+                start_offset: Interval::Days(3),
+                end_offset: Interval::Hours(1),
+                schedule_interval: Interval::Hours(1),
+            }),
+        },
+    )
+    .await
+    .expect("create_continuous_aggregate should succeed");
+
+    remove_continuous_aggregate_policy(&db, &view)
+        .await
+        .expect("remove_continuous_aggregate_policy should succeed");
+
+    drop_view(&db, &view).await;
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_drop_chunks() {
+    let db = connect_db().await;
+    let table = unique_name("ts");
+    create_test_table(&db, &table).await;
+
+    create_hypertable(
+        &db,
+        &HypertableConfig {
+            table_name: table.clone(),
+            time_column: "time".into(),
+            chunk_interval: Some(Interval::Days(1)),
+            if_not_exists: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Insert old data (30+ days ago) and recent data
+    let sql = format!(
+        r#"INSERT INTO "{table}" (time, sensor_id, value) VALUES
+            ('2020-01-01 00:00:00+00', 'a', 1.0),
+            ('2020-01-02 00:00:00+00', 'a', 2.0),
+            (NOW(), 'a', 100.0)"#
+    );
+    db.execute_unprepared(&sql).await.unwrap();
+
+    // Count before dropping
+    let before = db
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            format!(r#"SELECT * FROM "{table}""#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(before.len(), 3);
+
+    // Drop chunks older than 30 days
+    drop_chunks(&db, &table, &Interval::Days(30))
+        .await
+        .expect("drop_chunks should succeed");
+
+    // Count after dropping — old data should be gone
+    let after = db
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            format!(r#"SELECT * FROM "{table}""#),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        after.len(),
+        1,
+        "Only recent data should remain after drop_chunks"
+    );
+
+    drop_table(&db, &table).await;
+}
+
+#[tokio::test]
+#[ignore]
 async fn test_invalid_identifiers() {
     let db = connect_db().await;
 
